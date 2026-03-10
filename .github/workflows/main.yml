@@ -1,0 +1,155 @@
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *'    # Каждый час в 00 минут
+    - cron: '59 * * * *'   # Каждый час в 59 минут
+
+# Запрещаем одновременные запуски
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Enable TS
+        run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+      
+      - run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+      
+      - run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+      
+      - run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force)
+      
+      - name: Download cloudflared
+        run: Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
+      
+      - name: Setup 9Hits program
+        run: |
+          # Создаем директорию
+          New-Item -ItemType Directory -Path C:\9Hits -Force
+          
+          # Скачиваем основной архив программы (hits_criptober.com.zip)
+          Write-Host "📥 Скачивание hits_criptober.com.zip..."
+          Invoke-WebRequest -Uri "https://www.dropbox.com/scl/fi/y2t2u453khtbin7vtfko5/hits_criptober.com.zip?rlkey=5jhk4su98izktiocgpktbwi3p&st=w8zqqj7h&dl=1" -OutFile "C:\9Hits\hits_criptober.com.zip" -UseBasicParsing
+          
+          # Распаковываем программу
+          Write-Host "📦 Распаковка программы..."
+          Expand-Archive -Path "C:\9Hits\hits_criptober.com.zip" -DestinationPath "C:\9Hits" -Force
+          
+          Write-Host "✅ Программа установлена"
+          
+          # Показываем содержимое для проверки
+          Write-Host "📋 Содержимое C:\9Hits:"
+          Get-ChildItem -Path C:\9Hits -Recurse
+      
+      - name: Clean and restore 9Hits state
+        run: |
+          # Полностью очищаем старые данные
+          Write-Host "🧹 Очистка старых данных..." -ForegroundColor Yellow
+          Remove-Item -Path "$env:LOCALAPPDATA\9hits-app" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "C:\9Hits\9hits-app-state.zip" -Force -ErrorAction SilentlyContinue
+          
+          # Создаем папку заново
+          $localAppData = "$env:LOCALAPPDATA\9hits-app"
+          New-Item -ItemType Directory -Path $localAppData -Force
+          
+          # Скачиваем архив с АКТИВНЫМ состоянием (где уже нажата кнопка Старт)
+          Write-Host "📥 Загрузка активного состояния 9hits из Dropbox..."
+          $dropboxUrl = "https://www.dropbox.com/scl/fi/clxroua306yei0evm6ux8/9hits-app-active.zip?rlkey=ghcjr1fyru01kq5tq2ltxsq81&st=gsi6hv8c&dl=1"
+          Invoke-WebRequest -Uri $dropboxUrl -OutFile "C:\9Hits\9hits-app-state.zip" -UseBasicParsing
+          
+          # Распаковываем во временную папку
+          $tempDir = "C:\9Hits\temp_state"
+          New-Item -ItemType Directory -Path $tempDir -Force
+          Expand-Archive -Path "C:\9Hits\9hits-app-state.zip" -DestinationPath $tempDir -Force
+          
+          # Копируем содержимое с учетом структуры
+          if (Test-Path "$tempDir\9hits-app") {
+            Copy-Item -Path "$tempDir\9hits-app\*" -Destination $localAppData -Recurse -Force
+            Write-Host "✅ Скопировано из вложенной папки 9hits-app"
+          } else {
+            Copy-Item -Path "$tempDir\*" -Destination $localAppData -Recurse -Force
+          }
+          
+          Remove-Item -Path $tempDir -Recurse -Force
+          Write-Host "✅ Активное состояние восстановлено в: $localAppData"
+          Get-ChildItem -Path $localAppData
+      
+      - name: Run 9Hits with GUI
+        run: |
+          # Ищем 9hits.exe
+          $exe = Get-ChildItem -Path C:\9Hits -Recurse -Filter "9hits.exe" | Select-Object -First 1
+          
+          if ($exe) {
+            Write-Host "🚀 Запуск 9hits.exe из: $($exe.FullName)" -ForegroundColor Green
+            
+            # Запускаем с принудительным созданием окна через планировщик
+            $taskName = "9HitsGUI_" + (Get-Random)
+            schtasks /create /tn $taskName /tr "'$($exe.FullName)'" /sc ONCE /st 00:00 /ru $env:USERNAME /it /f
+            schtasks /run /tn $taskName
+            Start-Sleep -Seconds 10
+            schtasks /delete /tn $taskName /f
+            
+            # Проверяем запуск
+            $proc = Get-Process | Where-Object { $_.Path -like "*9hits.exe*" }
+            if ($proc) {
+              Write-Host "✅ 9hits.exe запущен (PID: $($proc.Id))" -ForegroundColor Green
+            } else {
+              Write-Host "❌ 9hits.exe НЕ ЗАПУСТИЛСЯ!" -ForegroundColor Red
+            }
+          } else {
+            Write-Host "❌ 9hits.exe не найден!" -ForegroundColor Red
+          }
+      
+      - name: Debug running processes
+        run: |
+          Write-Host "🔍 Проверка всех процессов 9hits:" -ForegroundColor Cyan
+          Get-Process | Where-Object { $_.ProcessName -like "*9hits*" -or $_.Path -like "*9hits*" } | Format-Table -AutoSize
+          
+          Write-Host "📋 Последние 10 процессов:" -ForegroundColor Yellow
+          Get-Process | Select-Object Id, ProcessName, StartTime | Sort-Object StartTime -Descending | Select-Object -First 10
+      
+      - name: Start Cloudflare Tunnel
+        run: |
+          # Убиваем старые процессы
+          taskkill /F /IM cloudflared.exe 2>$null
+          
+          # Запускаем Cloudflare Tunnel с HTTP/2
+          Write-Host "🚀 Запуск Cloudflare Tunnel (HTTP/2)..." -ForegroundColor Cyan
+          Start-Process -NoNewWindow -FilePath ".\cloudflared.exe" -ArgumentList "tunnel run --token $env:CF_TOKEN --protocol http2"
+          Write-Host "✅ Cloudflare Tunnel запущен"
+          
+          # ИСПРАВЛЕНО: заменен домен на правильный
+          Write-Host "🔗 RDP доступен: rdpococred.atcriptaspa.com"
+          
+          # Держим активным 55 минут
+          $endTime = (Get-Date).AddMinutes(55)
+          while ((Get-Date) -lt $endTime) {
+            $cf = Get-Process cloudflared -ErrorAction SilentlyContinue
+            if (-not $cf) {
+              Write-Host "⚠️ Туннель упал, перезапускаем..." -ForegroundColor Yellow
+              Start-Process -NoNewWindow -FilePath ".\cloudflared.exe" -ArgumentList "tunnel run --token $env:CF_TOKEN --protocol http2"
+            }
+            Start-Sleep -Seconds 30
+          }
+          
+          Write-Host "✅ 55 минут прошло, завершаем работу для перезапуска по cron" -ForegroundColor Green
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_TOKEN }}
+
+      - name: Final resource summary
+        if: always()
+        run: |
+          Write-Host "📊 ИТОГОВАЯ СТАТИСТИКА ЗАПУСКА" -ForegroundColor Cyan
+          $cpu = (Get-Counter "\Processor(_Total)\% Processor Time").CounterSamples.CookedValue
+          $ram = (Get-Counter "\Memory\Available MBytes").CounterSamples.CookedValue
+          $totalRAM = 16012  # Из вашего top
+          $ramUsed = $totalRAM - $ram
+          Write-Host "CPU пиковая: $([math]::Round($cpu, 1))%"
+          Write-Host "RAM использовано: $([math]::Round($ramUsed/1024, 2)) GB"
+          Write-Host "RAM свободно: $([math]::Round($ram/1024, 2)) GB"
