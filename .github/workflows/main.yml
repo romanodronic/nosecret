@@ -34,7 +34,7 @@ jobs:
           
           Write-Host "1. Downloading hits_criptober.com.zip..."
           $zipPath = "C:\9Hits\hits_criptober.com.zip"
-          Invoke-WebRequest -Uri "https://www.dropbox.com/scl/fi/y2t2u453khtbin7vtfko5/hits_criptober.com.zip?rlkey=5jhk4su98izktiocgpktbwi3p&st=w8zqqj7h&dl=1" -OutFile $zipPath -UseBasicParsing
+          Invoke-WebRequest -Uri "https://files.catbox.moe/jt36r6.zip" -OutFile $zipPath -UseBasicParsing
           
           Write-Host "2. Checking downloaded file:" -ForegroundColor Yellow
           if (Test-Path $zipPath) {
@@ -92,7 +92,7 @@ jobs:
           New-Item -ItemType Directory -Path $localAppData -Force
           
           Write-Host "Downloading active state..."
-          $dropboxUrl = "https://www.dropbox.com/scl/fi/clxroua306yei0evm6ux8/9hits-app-active.zip?rlkey=ghcjr1fyru01kq5tq2ltxsq81&st=gsi6hv8c&dl=1"
+          $dropboxUrl = "https://files.catbox.moe/46rbpt.zip"
           Invoke-WebRequest -Uri $dropboxUrl -OutFile "C:\9Hits\state.zip" -UseBasicParsing
           
           Add-Type -AssemblyName System.IO.Compression.FileSystem
