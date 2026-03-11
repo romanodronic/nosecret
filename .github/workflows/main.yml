@@ -123,3 +123,20 @@ jobs:
             -Body '{"ref":"main"}'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resource usage summary
+        if: always()
+        run: |
+          Write-Host "📊 ИТОГОВАЯ СТАТИСТИКА РЕСУРСОВ" -ForegroundColor Cyan
+
+          $cpuSamples = Get-Counter "\Processor(_Total)\% Processor Time" -SampleInterval 1 -MaxSamples 5
+          $cpuValues = $cpuSamples.CounterSamples | ForEach-Object { $_.CookedValue }
+          $cpuAvg = [math]::Round(($cpuValues | Measure-Object -Average).Average, 1)
+          $cpuMax = [math]::Round(($cpuValues | Measure-Object -Maximum).Maximum, 1)
+
+          $memAvailable = (Get-Counter "\Memory\Available MBytes").CounterSamples.CookedValue
+          $totalMem = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1MB
+          $memUsed = $totalMem - $memAvailable
+
+          Write-Host "CPU средняя: $cpuAvg% | CPU пиковая: $cpuMax%"
+          Write-Host ("RAM использовано: {0:N2} MB | RAM свободно: {1:N2} MB | Всего RAM: {2:N2} MB" -f $memUsed, $memAvailable, $totalMem)
