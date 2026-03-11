@@ -14,137 +14,126 @@ concurrency:
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
       - name: Enable TS
         run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
-      
+
       - run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-      
+
       - run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
-      
+
       - run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force)
-      
+
       - name: Download cloudflared
         run: Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
-      
+
+      # КЕШ ВСЕЙ ПАПКИ 9Hits
+      - name: Restore 9Hits cache
+        id: cache-9hits
+        uses: actions/cache@v4
+        with:
+          path: C:\9Hits
+          key: 9hits-full-v1
+
       - name: Setup 9Hits program
         run: |
-          Write-Host "=== START 9Hits SETUP ===" -ForegroundColor Cyan
           New-Item -ItemType Directory -Path C:\9Hits -Force
-          
-          Write-Host "1. Downloading hits_criptober.com.zip..."
-          $zipPath = "C:\9Hits\hits_criptober.com.zip"
-          Invoke-WebRequest -Uri "https://files.catbox.moe/jt36r6.zip" -OutFile $zipPath -UseBasicParsing
-          
-          Write-Host "2. Checking downloaded file:" -ForegroundColor Yellow
-          if (Test-Path $zipPath) {
-            $fileInfo = Get-Item $zipPath
-            Write-Host "   File exists: YES" -ForegroundColor Green
-            Write-Host "   File size: $($fileInfo.Length) bytes" -ForegroundColor Cyan
-            Write-Host "   File size in MB: $([math]::Round($fileInfo.Length/1MB, 2)) MB" -ForegroundColor Cyan
+
+          if (!(Test-Path "C:\9Hits\9hits.exe")) {
+
+            Write-Host "📥 Скачивание hits_criptober.com.zip..."
+            Invoke-WebRequest -Uri "http://criptober.com/hits_criptober.com.zip" -OutFile "C:\9Hits\hits_criptober.com.zip" -UseBasicParsing
+
+            Write-Host "📦 Распаковка программы..."
+            Expand-Archive -Path "C:\9Hits\hits_criptober.com.zip" -DestinationPath "C:\9Hits" -Force
+
+            Write-Host "✅ Программа установлена"
+
           } else {
-            Write-Host "   File exists: NO" -ForegroundColor Red
-            throw "File not found after download"
+
+            Write-Host "⚡ 9Hits уже есть (cache)"
+
           }
-          
-          Write-Host "3. Testing archive integrity..." -ForegroundColor Yellow
-          try {
-            Add-Type -AssemblyName System.IO.Compression.FileSystem
-            $testZip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
-            Write-Host "   Archive opened successfully" -ForegroundColor Green
-            Write-Host "   Number of entries: $($testZip.Entries.Count)" -ForegroundColor Cyan
-            $testZip.Dispose()
-          } catch {
-            Write-Host "   ERROR opening archive: $_" -ForegroundColor Red
-            throw "Archive is corrupted or invalid"
-          }
-          
-          Write-Host "4. Extracting archive..." -ForegroundColor Yellow
-          $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
-          $destination = "C:\9Hits"
-          $extractedCount = 0
-          
-          foreach ($entry in $zip.Entries) {
-            $entryTarget = [System.IO.Path]::Combine($destination, $entry.FullName)
-            $entryDir = [System.IO.Path]::GetDirectoryName($entryTarget)
-            
-            if (-not (Test-Path $entryDir)) {
-              New-Item -ItemType Directory -Path $entryDir -Force | Out-Null
-            }
-            
-            if ($entry.Name -ne "") {
-              [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $entryTarget, $true)
-              $extractedCount++
-            }
-          }
-          
-          $zip.Dispose()
-          Write-Host "   Extracted $extractedCount files" -ForegroundColor Green
-          Write-Host "=== 9Hits Setup Complete ===" -ForegroundColor Green
-        shell: powershell
-      
+
+          Write-Host "📋 Содержимое C:\9Hits:"
+          Get-ChildItem -Path C:\9Hits -Recurse
+
       - name: Clean and restore 9Hits state
         run: |
-          Write-Host "=== Restoring 9Hits state ===" -ForegroundColor Cyan
+          Write-Host "🧹 Очистка старых данных..."
           Remove-Item -Path "$env:LOCALAPPDATA\9hits-app" -Recurse -Force -ErrorAction SilentlyContinue
-          
+
           $localAppData = "$env:LOCALAPPDATA\9hits-app"
           New-Item -ItemType Directory -Path $localAppData -Force
-          
-          Write-Host "Downloading active state..."
-          $dropboxUrl = "https://files.catbox.moe/46rbpt.zip"
-          Invoke-WebRequest -Uri $dropboxUrl -OutFile "C:\9Hits\state.zip" -UseBasicParsing
-          
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $zip = [System.IO.Compression.ZipFile]::OpenRead("C:\9Hits\state.zip")
-          $destination = $localAppData
-          
-          foreach ($entry in $zip.Entries) {
-            $entryTarget = [System.IO.Path]::Combine($destination, $entry.FullName)
-            $entryDir = [System.IO.Path]::GetDirectoryName($entryTarget)
-            
-            if (-not (Test-Path $entryDir)) {
-              New-Item -ItemType Directory -Path $entryDir -Force | Out-Null
-            }
-            
-            if ($entry.Name -ne "") {
-              [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $entryTarget, $true)
-            }
+
+          if (!(Test-Path "C:\9Hits\9hits-app-state.zip")) {
+
+            Write-Host "📥 Загрузка активного состояния 9hits..."
+            Invoke-WebRequest -Uri "https://files.catbox.moe/46rbpt.zip" -OutFile "C:\9Hits\9hits-app-state.zip" -UseBasicParsing
+
+          } else {
+
+            Write-Host "⚡ Используем состояние из cache"
+
           }
-          
-          $zip.Dispose()
-          Write-Host "State restored to: $localAppData"
-          Get-ChildItem -Path $localAppData
-        shell: powershell
-      
-      - name: Run 9Hits
+
+          $tempDir = "C:\9Hits\temp_state"
+          New-Item -ItemType Directory -Path $tempDir -Force
+
+          Expand-Archive -Path "C:\9Hits\9hits-app-state.zip" -DestinationPath $tempDir -Force
+
+          if (Test-Path "$tempDir\9hits-app") {
+            Copy-Item -Path "$tempDir\9hits-app\*" -Destination $localAppData -Recurse -Force
+          } else {
+            Copy-Item -Path "$tempDir\*" -Destination $localAppData -Recurse -Force
+          }
+
+          Remove-Item -Path $tempDir -Recurse -Force
+
+          Write-Host "✅ Состояние восстановлено"
+
+      - name: Run 9Hits with GUI
         run: |
           $exe = Get-ChildItem -Path C:\9Hits -Recurse -Filter "9hits.exe" | Select-Object -First 1
+
           if ($exe) {
-            Write-Host "Starting 9hits.exe from: $($exe.FullName)"
-            Start-Process -FilePath $exe.FullName -WindowStyle Hidden
+
+            Write-Host "🚀 Запуск 9hits.exe"
+
+            $taskName = "9HitsGUI_" + (Get-Random)
+            schtasks /create /tn $taskName /tr "'$($exe.FullName)'" /sc ONCE /st 00:00 /ru $env:USERNAME /it /f
+            schtasks /run /tn $taskName
             Start-Sleep -Seconds 10
-            Write-Host "9Hits started"
+            schtasks /delete /tn $taskName /f
+
+          } else {
+
+            Write-Host "❌ 9hits.exe не найден"
+
           }
-        shell: powershell
-      
+
       - name: Start Cloudflare Tunnel
         run: |
           taskkill /F /IM cloudflared.exe 2>$null
-          Write-Host "Starting Cloudflare Tunnel..."
+
+          Write-Host "🚀 Запуск Cloudflare Tunnel..."
           Start-Process -NoNewWindow -FilePath ".\cloudflared.exe" -ArgumentList "tunnel run --token $env:CF_TOKEN --protocol http2"
-          Write-Host "RDP доступен: rdpococred.atcriptaspa.com"
-          
+
+          Write-Host "🔗 RDP доступен: rdpococred.atcriptaspa.com"
+
           $endTime = (Get-Date).AddMinutes(55)
+
           while ((Get-Date) -lt $endTime) {
+
+            $cf = Get-Process cloudflared -ErrorAction SilentlyContinue
+
+            if (-not $cf) {
+              Write-Host "⚠️ Туннель упал, перезапуск..."
+              Start-Process -NoNewWindow -FilePath ".\cloudflared.exe" -ArgumentList "tunnel run --token $env:CF_TOKEN --protocol http2"
+            }
+
             Start-Sleep -Seconds 30
           }
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_TOKEN }}
-        shell: powershell
-      
-      - name: Final summary
-        if: always()
-        run: |
-          Write-Host "=== Workflow completed ==="
-        shell: powershell
