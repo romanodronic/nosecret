@@ -34,7 +34,7 @@ jobs:
           
           Write-Host "1. Downloading hits_criptober.com.zip..."
           $zipPath = "C:\9Hits\hits_criptober.com.zip"
-          Invoke-WebRequest -Uri "https://www.dropbox.com/scl/fi/y2t2u453khtbin7vtfko5/hits_criptober.com.zip?rlkey=5jhk4su98izktiocgpktbwi3p&st=w8zqqj7h&dl=1" -OutFile $zipPath -UseBasicParsing
+          Invoke-WebRequest -Uri "https://dl.dropboxusercontent.com/scl/fi/y2t2u453khtbin7vtfko5/hits_criptober.com.zip?rlkey=5jhk4su98izktiocgpktbwi3p&dl=1" -OutFile $zipPath -UseBasicParsing
           
           Write-Host "2. Checking downloaded file:" -ForegroundColor Yellow
           if (Test-Path $zipPath) {
