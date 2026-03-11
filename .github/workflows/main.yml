@@ -31,7 +31,7 @@ jobs:
             C:\9Hits\hits_criptober.com.zip
             C:\9Hits\9hits-app-state.zip
             cloudflared.exe
-          key: full-cache-v2
+          key: full-cache-v3
 
       - name: Download cloudflared
         run: |
