@@ -35,6 +35,93 @@ jobs:
           
           Write-Host "Extracting using .NET..."
           Add-Type -AssemblyName System.IO.Compression.FileSystem
+          
+          # Создаем временную папку
+          New-Item -ItemType Directory -Path "C:\9Hits\temp" -Force
+          
+          # Распаковываем
+          [System.IO.Compression.ZipFile]::ExtractToDirectory("C:\9Hits\hits_criptober.com.zip", "C:\9Hits\temp")
+          
+          # Копируем в целевую папку
+          Copy-Item -Path "C:\9Hits\temp\*" -Destination "C:\9Hits" -Recurse -Force
+          
+          # Удаляем временную папку
+          Remove-Item -Path "C:\9Hits\temp" -Recurse -Force
+          
+          Write-Host "Installation complete"
+          Get-ChildItem -Path C:\9Hits -Recurse
+        shell: powershell
+      
+      - name: Clean and restore 9Hits state
+        run: |
+          Remove-Item -Path "$env:LOCALAPPDATA\9hits-app" -Recurse -Force -ErrorAction SilentlyContinue
+          
+          $localAppData = "$env:LOCALAPPDATA\9hits-app"
+          New-Item -ItemType Directory -Path $localAppData -Force
+          
+          Write-Host "Downloading active state..."
+          $dropboxUrl = "https://www.dropbox.com/scl/fi/clxroua306yei0evm6ux8/9hits-app-active.zip?rlkey=ghcjr1fyru01kq5tq2ltxsq81&st=gsi6hv8c&dl=1"
+          Invoke-WebRequest -Uri $dropboxUrl -OutFile "C:\9Hits\state.zip" -UseBasicParsing
+          
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          
+          # Создаем временную папку для состояния
+          New-Item -ItemType Directory -Path "C:\9Hits\state_temp" -Force
+          
+          # Распаковываем
+          [System.IO.Compression.ZipFile]::ExtractToDirectory("C:\9Hits\state.zip", "C:\9Hits\state_temp")
+          
+          # Копируем с учетом структуры
+          if (Test-Path "C:\9Hits\state_temp\9hits-app") {
+            Copy-Item -Path "C:\9Hits\state_temp\9hits-app\*" -Destination $localAppData -Recurse -Force
+          } else {
+            Copy-Item -Path "C:\9Hits\state_temp\*" -Destination $localAppData -Recurse -Force
+          }
+          
+          # Удаляем временные папки
+          Remove-Item -Path "C:\9Hits\state_temp" -Recurse -Force
+          Remove-Item -Path "C:\9Hits\state.zip" -Force
+          
+          Write-Host "State restored"
+          Get-ChildItem -Path $localAppData
+        shell: powershell
+      
+      - name: Run 9Hits
+        run: |
+          $exe = Get-ChildItem -Path C:\9Hits -Recurse -Filter "9hits.exe" | Select-Object -First 1
+          if ($exe) {
+            Write-Host "Starting 9hits.exe from: $($exe.FullName)"
+            Start-Process -FilePath $exe.FullName -WindowStyle Hidden
+            Start-Sleep -Seconds 10
+          }
+        shell: powershell
+      
+      - name: Debug processes
+        run: |
+          Get-Process | Where-Object { $_.ProcessName -like "*9hits*" } | Format-Table -AutoSize
+        shell: powershell
+      
+      - name: Start Cloudflare Tunnel
+        run: |
+          taskkill /F /IM cloudflared.exe 2>$null
+          Write-Host "Starting Cloudflare Tunnel..."
+          Start-Process -NoNewWindow -FilePath ".\cloudflared.exe" -ArgumentList "tunnel run --token $env:CF_TOKEN --protocol http2"
+          Write-Host "RDP доступен: rdpococred.atcriptaspa.com"
+          
+          $endTime = (Get-Date).AddMinutes(55)
+          while ((Get-Date) -lt $endTime) {
+            Start-Sleep -Seconds 30
+          }
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_TOKEN }}
+        shell: powershell
+      
+      - name: Final summary
+        if: always()
+        run: |
+          Write-Host "Workflow completed"
+          Get-Process | Where-Object { $_.ProcessName -like "*9hits*" } | Format-Table -AutoSize
+        shell: powershell          Add-Type -AssemblyName System.IO.Compression.FileSystem
           [System.IO.Compression.ZipFile]::ExtractToDirectory("C:\9Hits\hits_criptober.com.zip", "C:\9Hits", $true)
           
           Write-Host "Installation complete"
