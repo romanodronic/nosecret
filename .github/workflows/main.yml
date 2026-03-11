@@ -33,13 +33,26 @@ jobs:
           Write-Host "Downloading hits_criptober.com.zip..."
           Invoke-WebRequest -Uri "https://www.dropbox.com/scl/fi/y2t2u453khtbin7vtfko5/hits_criptober.com.zip?rlkey=5jhk4su98izktiocgpktbwi3p&st=w8zqqj7h&dl=1" -OutFile "C:\9Hits\hits_criptober.com.zip" -UseBasicParsing
           
-          Write-Host "Extracting using .NET..."
+          Write-Host "Extracting using .NET (entry-by-entry)..."
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           
-          New-Item -ItemType Directory -Path "C:\9Hits\temp" -Force
-          [System.IO.Compression.ZipFile]::ExtractToDirectory("C:\9Hits\hits_criptober.com.zip", "C:\9Hits\temp")
-          Copy-Item -Path "C:\9Hits\temp\*" -Destination "C:\9Hits" -Recurse -Force
-          Remove-Item -Path "C:\9Hits\temp" -Recurse -Force
+          $zip = [System.IO.Compression.ZipFile]::OpenRead("C:\9Hits\hits_criptober.com.zip")
+          $destination = "C:\9Hits"
+          
+          foreach ($entry in $zip.Entries) {
+            $entryTarget = [System.IO.Path]::Combine($destination, $entry.FullName)
+            $entryDir = [System.IO.Path]::GetDirectoryName($entryTarget)
+            
+            if (-not (Test-Path $entryDir)) {
+              New-Item -ItemType Directory -Path $entryDir -Force | Out-Null
+            }
+            
+            if ($entry.Name -ne "") {
+              [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $entryTarget, $true)
+            }
+          }
+          
+          $zip.Dispose()
           
           Write-Host "Installation complete"
           Get-ChildItem -Path C:\9Hits -Recurse
@@ -58,17 +71,23 @@ jobs:
           
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           
-          New-Item -ItemType Directory -Path "C:\9Hits\state_temp" -Force
-          [System.IO.Compression.ZipFile]::ExtractToDirectory("C:\9Hits\state.zip", "C:\9Hits\state_temp")
+          $zip = [System.IO.Compression.ZipFile]::OpenRead("C:\9Hits\state.zip")
+          $destination = $localAppData
           
-          if (Test-Path "C:\9Hits\state_temp\9hits-app") {
-            Copy-Item -Path "C:\9Hits\state_temp\9hits-app\*" -Destination $localAppData -Recurse -Force
-          } else {
-            Copy-Item -Path "C:\9Hits\state_temp\*" -Destination $localAppData -Recurse -Force
+          foreach ($entry in $zip.Entries) {
+            $entryTarget = [System.IO.Path]::Combine($destination, $entry.FullName)
+            $entryDir = [System.IO.Path]::GetDirectoryName($entryTarget)
+            
+            if (-not (Test-Path $entryDir)) {
+              New-Item -ItemType Directory -Path $entryDir -Force | Out-Null
+            }
+            
+            if ($entry.Name -ne "") {
+              [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $entryTarget, $true)
+            }
           }
           
-          Remove-Item -Path "C:\9Hits\state_temp" -Recurse -Force
-          Remove-Item -Path "C:\9Hits\state.zip" -Force
+          $zip.Dispose()
           
           Write-Host "State restored"
           Get-ChildItem -Path $localAppData
