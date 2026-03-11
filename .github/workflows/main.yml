@@ -115,7 +115,7 @@ jobs:
         run: |
           Invoke-RestMethod `
             -Method POST `
-            -Uri "https://api.github.com/repos/${{ github.repository }}/actions/workflows/${{ github.workflow }}/dispatches" `
+            -Uri "https://api.github.com/repos/${{ github.repository }}/actions/workflows/ci.yml/dispatches" `
             -Headers @{
               Authorization = "Bearer $env:GITHUB_TOKEN"
               Accept = "application/vnd.github+json"
